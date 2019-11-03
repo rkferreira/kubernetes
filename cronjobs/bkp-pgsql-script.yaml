@@ -1,0 +1,110 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bkp-pgsql-script
+  namespace: infra-jobs
+  labels:
+    environment: production
+data:
+  pgdump.sh: |
+    #!/bin/bash
+
+    #set env
+    export PATH=${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/postgresql/10/bin:/tmp
+
+    DB_EXCLUDE=("'azure_maintenance'," "'azure_sys'," "'postgres'")
+
+    ## Main vars
+    HOST=""
+    DB=""
+    USER=""
+    PASS=""
+    BACKUP=""
+    JOBS="2"
+    BKPFILE=""
+    BKPDIR=""
+    TODAY=`date +%F`
+    RAND=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 9`
+
+    ## Functions
+    #
+    compress_and_send() {
+      COMPRESS=$(cd /tmp && tar czf ${BKPFILE} ${BKPDIR})
+      if [[ `ls -1 /tmp/${BKPFILE}` ]]; then
+        COMP=1
+      else
+        COMP=0
+      fi
+
+      if [[ ${COMP} == 1 ]]; then
+        AZOUT=`azcopy cp /tmp/${BKPFILE} "${BACKUP}"`
+        wait
+        echo ${AZOUT} | grep -i -o -E "Number of Transfers Completed:.[0-9]{1,9}"
+      else
+        echo "Error creating tar file"
+      fi
+    }
+
+    install_azcli() {
+      APTU=`apt update 2>/dev/null`
+      APTG=`apt-get -y install wget`
+      AZCG=`wget --quiet -O /tmp/azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux`
+      tar -C /tmp -xf /tmp/azcopy.tar.gz --strip 1 --wildcards --no-anchored 'azcopy'
+    }
+
+    ## Main program
+    #
+    while getopts 'h:u:p:b:j:' opt; do
+      case ${opt} in
+        h)
+          HOST="$OPTARG"
+          ;;
+        u)
+          USER="$OPTARG"
+          ;;
+        p)
+          PASS="$OPTARG"
+          ;;
+        b)
+          BACKUP="$OPTARG"
+          ;;
+        j)
+          JOBS="$OPTARG"
+          ;;
+      esac
+    done
+    export PGPASSWORD="$PASS"
+
+    if [[ ! -z ${HOST} && ! -z ${USER} && ! -z ${PASS} && ! -z ${BACKUP} ]]; then
+      EXCLUDE_DB_STR=`echo ${DB_EXCLUDE[@]}`
+      ALL_DBs=`psql -h ${HOST} -U ${USER} -d postgres -w -t -c "SELECT datname FROM pg_database WHERE datistemplate = false and datname not in (${EXCLUDE_DB_STR});"`
+      CLI=0
+      for i in ${ALL_DBs}; do
+        echo "BACKUP starting pg_dump for ${i} - `date +%c`"
+        BKPDIR="/tmp/${i}_${HOST}_${TODAY}_${RAND}"
+        BKPFILE="${i}_${HOST}_${TODAY}_${RAND}.tar.gz"
+        PG_DUMP="pg_dump -h ${HOST} -U ${USER} -Fd ${i} -j ${JOBS} -w -f ${BKPDIR}"
+        eval ${PG_DUMP}
+        DUMP_RET="$?"
+        if [[ ${DUMP_RET} -eq 0 ]]; then
+          echo "BACKUP OK: Backup dump of ${i} is successful. Return is ${DUMP_RET}. Folder and file format are ${BKPDIR}. - `date +%c`"
+          if [[ ${CLI} == 0 ]]; then
+            install_azcli
+            CLI=1
+          fi
+          echo "BACKUP compressing and sending backup file for ${i} - `date +%c`"
+          res="$(compress_and_send)"
+          echo "$res - $BKPFILE - `date +%c`"
+          echo ""
+        else
+          echo "BACKUP ERROR: Backup dump of ${i} error. Return is ${DUMP_RET}. - `date +%c`"
+        fi
+      done
+      cd /tmp
+      rm -rf /tmp/*
+      exit 0
+
+    else
+      echo 'Missing parameters, you must provide all.'
+    fi

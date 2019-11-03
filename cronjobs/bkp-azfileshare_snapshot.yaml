@@ -1,0 +1,117 @@
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: bkp-azfileshare-snapshot-fs1
+  namespace: infra-jobs
+spec:
+  schedule: "29 4 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+          - name: bkp-azfileshare-script
+            configMap:
+              name: bkp-azfileshare-script
+          containers:
+          - name: bkp-azfileshare-snapshot-fs1
+            image: mcr.microsoft.com/azure-cli:latest
+            command:
+            - /bin/bash
+            - /mnt/share/bkp-fileshare.sh
+            args:
+            - -n
+            - fs1
+            - -a
+            - storageaccount
+            - -o
+            - backup
+            - -t
+            - '?sv=2018-03-28&ss=f&srt=sco&sp=rwdlc&se=SASTOKEN'
+            volumeMounts:
+            - name: bkp-azfileshare-script
+              mountPath: /mnt/share
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bkp-azfileshare-script
+  namespace: infra-jobs
+  labels:
+    environment: production
+data:
+  bkp-fileshare.sh: |
+    #!/bin/bash
+    ### Azure File Share backup
+    #
+    ## share name 
+    #  -n <share_name>
+    SHARE_NAME=""
+    ## storage account name
+    #  -a <acct_name>
+    ACCT_NAME=""
+    ## sas token
+    #  -t <token>
+    TOKEN=""
+    ## snapshot retantion in days
+    #  -d <days>  
+    DAYS=""
+    ## operation: [ backup | cleanup ]
+    #  -o [backup|cleanup]
+    OPERATION=""
+    ## how about -h ? :)
+    #
+    # ./bkp-fileshare.sh -n fs1  -a storageaccount -t '?sv=2018-03-28&ss=f&srt=sco&sp=rwdlc&sxxxxxxxx' -o backup
+    #
+    # ./bkp-fileshare.sh -n fs1  -a storageaccount -t '?sv=2018-03-28&ss=f&srt=sco&sp=rwdlc&sxxxxxxxx' -d 16 -o cleanup
+    #
+    while getopts 'n:a:t:d:o:' opt; do
+      case ${opt} in
+        n)
+          SHARE_NAME="$OPTARG"
+          ;;
+        a)
+          ACCT_NAME="$OPTARG"
+          ;;
+        t)
+          TOKEN="$OPTARG"
+          ;;
+        d)
+          DAYS="$OPTARG"
+          ;;
+        o)
+          OPERATION="$OPTARG"
+          ;;
+      esac
+    done
+    export PATH="${PATH}:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    # safe lock, can be twiked manually
+    MINLOCKDAYS=15
+    if [ ! -z $OPERATION ]; then
+      if [[ $OPERATION = "backup" ]]; then
+        az storage share snapshot -n "$SHARE_NAME" --account-name "$ACCT_NAME" --sas-token "$TOKEN"
+        exit $?
+      fi
+      if [[ $OPERATION = "cleanup" && ! -z $DAYS && $DAYS -gt $MINLOCKDAYS ]]; then
+        SEC=$((86400 * $DAYS))
+        TGT_DATE=$(date -I -d@"$(( `date +%s`-$SEC))")
+        #TGT_DATE=`date -I -d "-${DAYS} days"`
+        #TEST tobedeleted=$(az storage share list --account-name "$ACCT_NAME" --sas-token "$TOKEN" --include-snapshot --query "[? name=='${SHARE_NAME}' && snapshot!=null && snapshot>'${TGT_DATE}'].snapshot" -o tsv)
+        tobedeleted=$(az storage share list --account-name "$ACCT_NAME" --sas-token "$TOKEN" --include-snapshot --query "[? name=='${SHARE_NAME}' && snapshot!=null && snapshot<'${TGT_DATE}'].snapshot" -o tsv)
+        for i in $tobedeleted; do
+          #chomp=$(echo $i | sed 's/^[ \t]*//;s/[ \t]*$//')
+          echo "$ACCT_NAME $SHARE_NAME $i $TGT_DATE"
+          az storage share delete --account-name "$ACCT_NAME" --sas-token "$TOKEN" -n "$SHARE_NAME" --snapshot "$i"
+        done
+        exit $?
+      else
+        echo ""
+        echo "Missing parameter or out of range."
+        exit 1
+      fi
+    else
+      exit 1
+    fi
+---

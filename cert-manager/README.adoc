@@ -1,0 +1,26 @@
+= Cert-Manager
+
+kubectl create namespace cert-manager
+kubectl label namespace cert-manager certmanager.k8s.io/disable-validation=true
+kubectl apply -f cert-manager.yaml
+  #kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.10.0/cert-manager.yaml
+
+kubectl get pods --namespace cert-manager
+kubectl apply -f test-resources.yaml
+kubectl describe certificate -n cert-manager-test
+kubectl delete -f test-resources.yaml
+
+Edit myhostingress ingress, add TLS
+ 
+ certmanager.k8s.io/cluster-issuer: letsencrypt-staging
+
+  tls:
+  - hosts:
+    - myhostingress.domain.com
+    secretName: myhostingress-tls
+
+
+
+
+
+# https://letsencrypt.org/docs/staging-environment/

@@ -1,0 +1,118 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: elastic-curator-allindexes-delete
+  namespace: infra-jobs
+spec:
+  schedule: "0 22 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+          - name: bkp-curator-elastic-conf
+            configMap:
+              name: bkp-curator-elastic-conf
+          - name: bkp-curator-elastic-action-del
+            configMap:
+              name: bkp-curator-elastic-action-del
+          - name: bkp-curator-elastic-script
+            configMap:
+              name: bkp-curator-elastic-script
+          containers:
+          - name: elastic-curator-allindexes-delete
+            image: python:2
+            env:
+            - name: PYTHONWARNINGS
+              value: "ignore"
+            command:
+            - /bin/bash
+            - /mnt/curator.sh
+            volumeMounts:
+            - name: bkp-curator-elastic-conf
+              mountPath: /mnt/curator.yml
+              subPath: curator.yml
+            - name: bkp-curator-elastic-action-del
+              mountPath: /mnt/all_indexes-del.yml
+              subPath: all_indexes-del.yml
+            - name: bkp-curator-elastic-script
+              mountPath: /mnt/curator.sh
+              subPath: curator.sh
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bkp-curator-elastic-conf
+  namespace: infra-jobs
+  labels:
+    environment: production
+data:
+  curator.yml: |
+    client:
+      hosts:
+        - elastic.domain.svc.cluster.local
+      port: 9200
+      url_prefix:
+      use_ssl: True
+      certificate:
+      client_cert:
+      client_key:
+      ssl_no_validate: True
+      http_auth:
+      timeout: 30
+      master_only: False
+
+    logging:
+      loglevel: INFO
+      logfile:
+      logformat: default
+      blacklist: ['elasticsearch', 'urllib3']
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bkp-curator-elastic-action-del
+  namespace: infra-jobs
+  labels:
+    environment: production
+data:
+  all_indexes-del.yml: |-
+    actions:
+      1:
+        action: delete_snapshots
+        description: "Delete snapshots older than 60 days"
+        options:
+          ignore_empty_list: True
+          repository: all_indexes
+          retry_interval: 120
+          retry_count: 3
+          disable_action: False
+        filters:
+        - filtertype: age
+          source: name
+          direction: older
+          timestring: '%Y.%m.%d'
+          unit: days
+          unit_count: 60
+          exclude: False
+        - filtertype: age
+          source: creation_date
+          direction: older
+          unit: days
+          unit_count: 60
+          exclude: False
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bkp-curator-elastic-script
+  namespace: infra-jobs
+  labels:
+    environment: production
+data:
+  curator.sh: |-
+    /usr/local/bin/pip install elasticsearch-curator
+    /usr/local/bin/curator --config /mnt/curator.yml /mnt/all_indexes-del.yml
+    exit $?
+---

@@ -1,0 +1,72 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: bkp-elastic-allindexes
+  namespace: infra-jobs
+spec:
+  schedule: "0 1 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+          - name: bkp-elastic-script
+            configMap:
+              name: bkp-elastic-script
+          containers:
+          - name: bkp-elastic-allindexes
+            image: centos:latest
+            command:
+            - /bin/bash
+            - /mnt/share/bkp-elastic.sh
+            args:
+            - -u
+            - 'https://elastic.domain.svc.cluster.local:9200'
+            - -p
+            - all_indexes
+            - -n
+            - '%3Csnapshot-%7Bnow%2Fd%7D%3E?wait_for_completion=true'
+            volumeMounts:
+            - name: bkp-elastic-script
+              mountPath: /mnt/share
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bkp-elastic-script
+  namespace: infra-jobs
+  labels:
+    environment: production
+data:
+  bkp-elastic.sh: |
+    #!/bin/bash
+    ### Elastic backup
+    #
+    ELASTIC_URL=""
+    ELASTIC_BKP_PATH=""
+    ELASTIC_BKP_NAME=""
+    # this is URL encoded, <snapshot-{now/d}>  ->   %3Csnapshot-%7Bnow%2Fd%7D%3E
+    while getopts 'u:p:n:' opt; do
+      case ${opt} in
+        u)
+          ELASTIC_URL="$OPTARG"
+          ;;
+        p)
+          ELASTIC_BKP_PATH="$OPTARG"
+          ;;
+        n)
+          ELASTIC_BKP_NAME="$OPTARG"
+          ;;
+      esac
+    done
+    export PATH="${PATH}:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    out=$(curl -X PUT ${ELASTIC_URL}/_snapshot/${ELASTIC_BKP_PATH}/${ELASTIC_BKP_NAME} --insecure)
+    ret=`echo $?`
+    ret2=`echo $out | grep '{"error":' ; echo $?`
+    echo $out
+    if [[ $ret2 -eq 0 ]]; then
+      exit 1
+    fi
+    exit $ret
+---

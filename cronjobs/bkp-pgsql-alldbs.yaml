@@ -1,0 +1,39 @@
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: bkp-pgsql-alldbs
+  namespace: infra-jobs
+spec:
+  schedule: "00 22 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+          - name: bkp-pgsql-script
+            configMap:
+              name: bkp-pgsql-script
+          containers:
+          - name: bkp-pgsql-alldbs
+            image: postgres:10
+            command:
+            - /bin/bash
+            - /mnt/share/pgdump.sh
+            args:
+            - -h
+            - -pgsql.postgres.database.azure.com
+            - -u
+            - admin@db
+            - -p
+            - aaaaaaaa1
+            - -b
+            - 'https://storageaccount.blob.core.windows.net/container?sv=2018-03-28&SASTOKEN'
+            - -j
+            - "4"
+            volumeMounts:
+            - name: bkp-pgsql-script
+              mountPath: /mnt/share
+          restartPolicy: OnFailure

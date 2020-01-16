@@ -3,7 +3,8 @@
 Oi Isa, se entendi bem, segue.
 Nao deve estar 100% funcional.
 
-```helm install nginx-ingress stable/nginx-ingress --set controller.replicaCount=2  \
+```
+helm install nginx-ingress stable/nginx-ingress --set controller.replicaCount=2  \
                   --set controller.nodeSelector."beta\.kubernetes\.io/os"=linux  \
               --set defaultBackend.nodeSelector."beta\.kubernetes\.io/os"=linux
 ```

@@ -3,13 +3,19 @@
 Oi Isa, se entendi bem, segue.
 Nao deve estar 100% funcional.
 
-`helm install nginx-ingress stable/nginx-ingress --set controller.replicaCount=2  --set controller.nodeSelector."beta\.kubernetes\.io/os"=linux  --set defaultBackend.nodeSelector."beta\.kubernetes\.io/os"=linux`
+`helm install nginx-ingress stable/nginx-ingress --set controller.replicaCount=2  \
+--set controller.nodeSelector."beta\.kubernetes\.io/os"=linux  \
+--set defaultBackend.nodeSelector."beta\.kubernetes\.io/os"=linux`
+
+
 `helm install mycv mycv-0.1.0.tgz`
 
 
 ------------------------------------
 
+```
 $ kubectl get all
+
 NAME                                                 READY   STATUS        RESTARTS   AGE
 pod/mycv-b49cb544d-4nfms                             0/1     Pending       0          9m51s
 pod/mycv-b49cb544d-gt42c                             0/1     Pending       0          9m51s
@@ -42,5 +48,6 @@ replicaset.apps/nginx-ingress-default-backend-564c96d9c4   1         1         0
 $ kubectl get ingress
 NAME   HOSTS             ADDRESS   PORTS     AGE
 mycv   mycv.myrepo.com             80, 443   10m
+```
 
 ------------------------------------

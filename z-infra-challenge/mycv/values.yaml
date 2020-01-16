@@ -1,0 +1,48 @@
+replicaCount: 3
+
+image:
+  repository: atlassian/bitbucket-server
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  name:
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 7990
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: mycv.myrepo.com
+      paths:
+        - backend:
+            serviceName: mycvservice
+            servicePort: 7990
+          path: /
+  tls:
+    - hosts:
+        - mycv.myrepo.com
+      secretName: mycv.repo-tls
+
+resources:
+  limits:
+    cpu: 1
+    memory: 1G
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: bitbucket-single
+  name: bitbucket-single
+spec:
+  containers:
+  - image: atlassian/bitbucket-server
+    name: bitbucket-single
+    env:
+    - name: ELASTICSEARCH_ENABLED
+      value: "false"
+    - name: JVM_MINIMUM_MEMORY
+      value: "512m"
+    - name: JVM_MAXIMUM_MEMORY
+      value: "512m"
+    - name: SERVER_SECURE
+      value: "false"
+    - name: SERVER_SCHEME
+      value: "http"
+    resources:
+      limits:
+        cpu: 1
+        memory: 1G
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}

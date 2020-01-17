@@ -1,7 +1,15 @@
 # Z infra test
 
-Oi Isa, se entendi bem, segue.
-Nao deve estar 100% funcional.
+Bom dia!
+
+O pacote "mycv" faz o deploy da imagem oficial da atlassian/bitbucket no DockerHub.
+Sao provisionados 3 PODs, atras de um servico "mycv" e eh exposto externamente usando o nginx ingress com support a TLS.
+Pode faltar alguns parametros para configuracao do bitbucket (volume, jvm options, etc), que acredito que voce queria um Dockerfile para setar algumas destas coisas.
+Tem um arquivo de teste  `bitbucket-single_pod.yaml` tambem onde seto alguns parametros do env para o bitbucket para exemplo/teste.
+
+No meu laptop com minikube, tenho problemas de recursos para rodar tudo :)
+
+Abs
 
 ```
 helm install nginx-ingress stable/nginx-ingress --set controller.replicaCount=2  \
